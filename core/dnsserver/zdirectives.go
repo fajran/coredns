@@ -30,6 +30,7 @@ var Directives = []string{
 	"any",
 	"chaos",
 	"loadbalance",
+	"dropv6",
 	"cache",
 	"rewrite",
 	"dnssec",
