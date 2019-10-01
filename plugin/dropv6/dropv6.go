@@ -2,6 +2,7 @@ package dropv6
 
 import (
 	"context"
+	"strings"
 
 	"github.com/coredns/coredns/plugin"
 
@@ -10,12 +11,28 @@ import (
 
 type DropV6 struct {
 	Next plugin.Handler
+
+	Suffixes []string
 }
 
 func (p DropV6) ServeDNS(ctx context.Context, w dns.ResponseWriter, r *dns.Msg) (int, error) {
-	// TODO check for matching prefix
+	// TODO check for matching suffix
+	matchingSuffix := ""
+found:
+	for _, suffix := range p.Suffixes {
+		for _, question := range r.Question {
+			if strings.HasSuffix(question.Name, suffix) {
+				matchingSuffix = suffix
+				break found
+			}
+		}
+	}
 
-	dw := &Dropper{w, ""}
+	if matchingSuffix == "" {
+		return plugin.NextOrFailure(p.Name(), p.Next, ctx, w, r)
+	}
+
+	dw := &Dropper{ResponseWriter: w, Suffix: matchingSuffix}
 	return plugin.NextOrFailure(p.Name(), p.Next, ctx, dw, r)
 }
 
@@ -26,7 +43,7 @@ func (p DropV6) Name() string {
 type Dropper struct {
 	dns.ResponseWriter
 
-	Prefix string
+	Suffix string
 }
 
 func (w *Dropper) WriteMsg(r *dns.Msg) error {
@@ -45,8 +62,8 @@ func (w *Dropper) WriteMsg(r *dns.Msg) error {
 	nr.Answer = answers
 
 	n := len(r.Answer) - len(answers)
-	droppedQueriesCount.WithLabelValues(w.Prefix).Inc()
-	droppedAnswersCount.WithLabelValues(w.Prefix).Add(float64(n))
+	droppedQueriesCount.WithLabelValues(w.Suffix).Inc()
+	droppedAnswersCount.WithLabelValues(w.Suffix).Add(float64(n))
 
 	return w.ResponseWriter.WriteMsg(nr)
 }
